@@ -1,0 +1,29 @@
+# Sizing and positioning a widget
+
+Building the tree itself is `widget-construction.md`; typefaces, font sizes and colours are
+`widget-type-and-colour.md`.
+
+## Layout
+
+- **A per-resize refresh that reads a measured field must run AFTER that field is assigned.** Anything pushed off a size computed later in the same function reads the PREVIOUS size - zero on the first call. Push it from the sweep that already runs after the measurement.
+- Headless Slate never resolves a wrapped text block's desired size, so `SetMaxDesiredHeight` (which clamps a measured size) is untestable headless. `SetHeightOverride` + `SetClipping(ClipToBounds)` works and is provable — the clip is load-bearing and silent, so say so in the handoff.
+- **An Auto slot centred by equal Fill siblings packs LEFT the moment both siblings collapse.** A Collapsed occupant leaves the row's Fill split entirely, so hiding both "symmetrically" removes the whole split rather than balancing it. Hide such a sibling by emptying it and letting its own collapse-when-empty rule run inside a wrapper that never collapses — and assert the centred child's POSITION (Fill weight before == after, both non-zero), never that each sibling is hidden, which is true in the broken case too.
+- **A wrapping text block in an AUTO-sized slot converges on its own longest word**, stacking a message one word per line - the auto slot hands it its desired width, and a wrapping block's desired width is computed from nothing. It needs a `Fill` slot even with an explicit `SetWrapTextAt`. The exact opposite of the `USizeBox` rule below, which is why one row can want both.
+- **A `USizeBox` width/height override does NOTHING under a `Fill` slot.** `AlignChild`'s Fill branch returns the whole allotted size and never asks the child what it wanted, so the override only ever feeds `ComputeDesiredSize`. Reserve a margin with real slot PADDING; use an override only where the slot alignment actually consults desired size.
+- **A `HAlign_Center` slot with asymmetric padding shifts the child by the WHOLE trailing margin, not half it** - `AlignChild` is `(Allotted - Child)/2 + MarginPre - MarginPost`. Offsetting one overlay child off centre that way also leaves it free to be drawn over by a centred sibling that grows; a `UHorizontalBox` holding both is the fix.
+- **A child sized from its siblings' widths is placed by a panel's own arrange step**, never by measuring after layout and writing padding back next tick. Shrink it there too, via `MakeChild`'s scale - a `UScaleBox` recomputes from the PREVIOUS paint's geometry, a frame behind whenever its room changes.
+- **Headless, hold the `TakeWidget()` root in a local before `SlatePrepass` and every read after it** - a temporary drops the Slate tree and each cached desired size then reads 0.
+- **A widget whose layout box is not where it draws vanishes inside a clipping parent** — Slate skips any child whose box misses the clip rect (`SWidget::IsChildWidgetCulled`), and centre-anchored canvas children add nothing to the canvas's desired size. Keep the box on what the widget shows instead of offsetting it back by hand; no headless spec sees a cull, only the running game.
+- `UCanvasPanelSlot` position signs flip with the corner anchor: positive is inward from `(0,0)`, negative from `(1,1)`. Centre anchors are sign-agnostic, which is why this goes unnoticed.
+- `UWidgetLayoutLibrary::GetViewportSize` logs a warning on every headless-constructed widget; guard behind `if (GetWorld())` with a documented constant fallback.
+- **`UWidgetLayoutLibrary::GetViewportSize` answers in PIXELS; UMG lays out in SLATE UNITS** — divide by `GetViewportScale` or every screen-fraction is computed against a narrower row than it is placed in, and the surplus falls out as space nobody asked for. Wrong on any screen the DPI curve does not leave at 1.0: the editor's play panel and a Steam Deck both.
+- **A Steam Deck lays out 1729 slate units wide** (1280×800 under UE's default shortest-side DPI curve, scale 0.740, unless the project's config overrides it). Solve a fixed-width row against that, not against 1920.
+
+## Placement
+
+- **A layout measured off supplied art is ONE table of slot rects applied in one pass**, never a position block per element. Per-corner anchors each carry their own offset sign, and that is where the bugs were; a point anchor with centre alignment has no sign at all. A new element becomes a table row.
+- **A CENTRED `USizeBoxSlot` draws a `UImage` at the BRUSH's own size, not the box's** - `SetBrushFromTexture(T, /*bMatchSize*/ false)` leaves `ImageSize` at its 32x32 default, so growing the box moves nothing. Fill both axes where the box and the source are square; setting `ImageSize` instead is undone by the next brush swap (an icon-set change).
+- **Two glyphs of the same box size are not the same size on screen** - a shoulder bumper inks 0.65 of its 100x100 source and a trigger 0.87, so one box size draws the trigger a third taller. Measure the source's own non-transparent bounds and scale one box by the ratio; the eye reads ink, never the box.
+  - **…but "the same size as the other icons" in a requirement is box-or-ink ambiguous — ask, with each glyph's ink fractions in the question.**
+- **The same Fill default flattens a square glyph in a WIDE cell** - a 24x24 icon in a 96-wide `USizeBox` draws 96x24. Alignment lives on the SLOT, not the box (`USizeBox` has no `SetHorizontalAlignment`; cast `SetContent`'s returned `UPanelSlot` to `USizeBoxSlot`).
+- **A column of entries is a `UVerticalBox`, never per-entry Y arithmetic on a canvas.** Doing it by hand means owning measurement, ordering and Z-order every tick — each has gone wrong in turn (a wrapped height read as 0, a placement pass hung off a sync with an early return, a box drawn over the panel below it). The box does all three, and a collapsed child closes its own gap.

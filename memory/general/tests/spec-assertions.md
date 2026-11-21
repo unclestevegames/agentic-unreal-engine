@@ -1,0 +1,29 @@
+# Whether an assertion can see what it claims
+
+What a fixture needs is `spec-fixtures.md` and `spec-machine-coupling.md`; judging a red suite is `spec-repair.md`; what an accessor or oracle can see is `spec-observation.md`.
+
+## Assertions that prove nothing
+- **A value with TWO renderings needs both pinned, or the cheap one passes for the dear one.** A price's plain reading and the rich text a widget actually draws are different strings; pinning `Plain()` alone stays green while the widget draws garbage. Assert what the widget composes, not only what the model says.
+- **`TestEqual` on two `FString`s ignores case**, so a printed line pinned with it passes "deal" for "Deal" - check printed text with `TestEqualSensitive`.
+- Pick test values that differ from the struct's defaults: if the key vanished, what would the field read? An expectation equal to the do-nothing value is decoration.
+- Before asserting an animated value is at rest, compute what the ACTIVE value would be at that instant. For a periodic effect the trough and the peak are both useless sample points, and a `Start()` at the trough makes t=0 useless too.
+- **A distance assertion about where something sits ACROSS a surface must be measured flat** (`FVector::Dist2D`). A 3D `.Size()` folds the resting height into a sideways claim, which hides inside the tolerance until that height grows — `sqrt(150²+4²)` passes at 0.5, `sqrt(150²+14²)` does not.
+- A spec asserting a delta needs a non-degenerate after-state — one occupant cannot distinguish "X was removed" from "the container emptied".
+- **"This list was not disturbed" needs its subject at a NON-TAIL index** — a remove-and-re-append puts a tail entry back at its own position, so the order compares equal and the spec passes with the bug in. Put it in the middle and assert that as a precondition.
+- **A geometry sweep that `continue`s past what it cannot see can check nothing at all** - actors spawned with no display data keep every decoration hidden, so a sweep skipping invisible ones can examine zero. Count what each check actually examined and `TestTrue` the count; an `AddInfo` "largest value seen" still at its initial sentinel is the tell.
+- **A sweep over an enumerator that SKIPS bad input passes vacuously for exactly the input that is broken.** A loader that drops a file it cannot parse makes "every shipped file parses" see no malformed one and read green. Count the source against what the enumeration returned; the same shape binds any loader whose contract is "missing or malformed yields nothing for this file".
+- **A "nothing else moved" spec must snapshot a value production COMPUTES** — a scroll bound, a wrap count — never one that falls out of a constant table. Table values cannot move for any state, so the assertion is true by construction and the coupling it names would still slip through.
+- **A `while (value < target)` walk silently becomes a no-op the day the opening value moves** — the spec keeps passing with its own subject gone. Assert the value; walk to it only when the walk is the subject.
+- A spec that computes its own version of a quantity proves only its own arithmetic. Grep production for the derivation before asserting a change in it; if there is none, assert what is observable.
+- A behaviour whose window the environment closes faster than a test can look at it is not specable live — extract the decision as a pure function and spec every branch engine-free.
+- **A fixture whose identity equals its position cannot tell the two apart** — minting handles equal to their slot index is right for a fixed table and blind to every handle/slot confusion. Any spec about a table that CHANGES mints handles that match no slot.
+- A guard whose old and new inputs coincide in your chosen state cannot be discriminated. Ask in which states the two versions disagree, and write the spec in one of those.
+- A fixture standing in for a conversation must model the conversation's own invalidation, not just its answers — otherwise a spec about *asking* degenerates into a spec about *state*.
+- **A spec about a PLAYER action must press the button, not call the presenter.** Driving the presenter directly skips the widget path the rule lives on, so the spec passes whatever the rule does - a mutation is what exposed it, nothing else would have.
+- **"These N surfaces are handed the same string" written as the composing function equal to itself is true of any deterministic function** - it passes with a surface left on the old value, which is the mistake it claims to catch. Prove each surface on its own; that is what makes them agree.
+- **Mutate the mechanism and watch the spec fail before believing it guards anything.** A mutation that does not fail is a finding about the spec, never luck.
+  - **…or about the REVIEW that asked for it.** A critic's reported defect can be unreachable — two reads that look independent go through the same live snapshot in one synchronous call, so they can never disagree. Keep the clearer code, delete the guard: a fixture for a defect never shown to exist is exactly what must not be admitted.
+- Name the precondition that makes a fix's code run and assert it explicitly — a fix on a path the spec cannot enter is unverified coverage wearing a green tick.
+- **"This is not on screen" is vacuous unless the thing had something to show.** Assert both halves — the readout says it has someone to name, AND the screen keeps it off — or the spec passes for the wrong reason.
+- **A round trip through `FFileHelper` cannot test a file's ENCODING** — its reader auto-detects a UTF-16 BOM and hands back the identical `FString`, so a non-ASCII payload proves nothing about `ForceUTF8WithoutBOM`. Assert the raw bytes, or drop the claim.
+- **"Pushing X does nothing" is asserted after EVERY push, never once after a set.** An up-then-down pair from a middle row lands back where it started, so the restored behaviour passes.

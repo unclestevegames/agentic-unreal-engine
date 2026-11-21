@@ -1,0 +1,6 @@
+# Build, link and launch faults that read like the toolchain
+
+- **An editor open on ANY project fails every editor build in ~4s with "Unable to build while Live Coding is active"** (the check keys on the engine's editor program), and `ue-editor.ps1 status`/`stop` only know their own pid. Check for an `UnrealEditor` process; when it is the owner's, leave it and pass `-NoHotReloadFromIDE` to `Build.bat` for a build in a separate worktree.
+- **Launch the editor with the project on the command line.** A bare `UnrealEditor.exe` relying on "load the most recently opened project" does not load C++ game modules — it prompts "modules are missing or built with a different engine version", then fails with "the game module could not be found". Double-clicking the `.uproject` works; don't chase BuildId or clean rebuilds for that signature.
+- A module that names another module's symbols must declare it in its OWN `Build.cs`; UBT propagates a transitive dependency's include paths but not its linkage. `__imp_` in an `LNK2019` means wrong link line, never a missing export macro — read the `.rsp` before touching any API macro.
+- A `.uplugin`'s `Modules` array must never list a `ModuleType.External` module: it fails every consumer in ~0.6s with `OtherCompilationError`, which reads like a toolchain problem.

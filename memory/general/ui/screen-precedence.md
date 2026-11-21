@@ -1,0 +1,9 @@
+# Which screen owns the display and the input
+
+Per-tick syncs in general are `per-tick-sync.md`.
+
+- **A screen collapsed by a page switch stops ticking, so anything its `NativeTick` drove for the WHOLE menu flow has to move to the host.** Whether a content owes the player a message is asked of every content by the host each frame - a virtual, never a list of which screens can have something to say.
+- **A widget whose presence is DERIVED per tick must also be re-asked at the press that changes the answer** - the same function called again, never a second writer. Left to the tick alone, the frame between the press and the sync draws the thing the press was meant to cover (a menu opening under a full-screen cover) and swallows an input landing in it, because the widget's own guard is on being drawn. Edge-trigger the push so the extra call restarts no tween.
+- **A screen taken DOWN from input while its replacement is raised by a per-tick sync renders uncovered, for as long as the sync's own condition takes to become true.** Make that condition true at the moment of the press - not downstream of whatever the press eventually produces, which may be a socket round trip away.
+- **A screen that can trap the player must be outranked by every screen that owes them an answer.** A refusal and a "the server has gone away" message both have to reach the screen from under a full-screen cover, so their syncs take it and the cover's own sync takes nothing. Check the ENTRY GATE of every such sync when adding a screen - a gate listing screens by name silently throws the message away for the one it does not list.
+- **A screen with a per-tick derived overlay and a confirmation box has TWO things that can own it.** Precedence is one derived answer both the router and the button row read, never a stored shown-flag: with a flag, the overlay takes the input while the box stays drawn and the prompt bar goes on offering buttons that now answer something else.

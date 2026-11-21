@@ -1,0 +1,32 @@
+# Per-tick syncs, reconciles and one-shots
+
+How a derived value, a per-tick sync or a one-shot flag decides what a widget shows or when a beat
+fires, and every shape in which one goes stale. Which screen owns the display is `screen-precedence.md`;
+a tween or animated value is `animated-values.md`.
+
+## Reconciles and latches
+
+- **A push that only ever ran on NAVIGATION carries navigation's own resets, so turning it into a per-tick reconcile fires them under the player.** Gate every such reset on the content it belongs to actually moving, and expect an existing spec to be pinning the old "any push resets it" reading with a fixture that re-pushes identical content: repair the fixture, keep the subject.
+- **A panel shown by one flow and hidden by another leaves the NEXT opener with no slide to wait on.** A question that raises a panel and never lowers it makes the next phase's slide-in complete on its first tick - and any step machine sampling "what is being asked" at that moment reads the window from before the phase. Derive from the live decision instead of sampling once at a tween's end.
+- A per-tick sync that reads a member ANOTHER sync writes later in the same tick shows last tick's answer. Derive from the same source the other sync derives from, never from its output, or the widget prints the previous item's name against the new one's numbers for one frame.
+- A reconcile that must land in the same frame a widget changes what it draws belongs at the end of that widget's own `RefreshVisibility` (inside the paint pass); the game instance's core ticker runs after the frame has painted, one frame late.
+- A per-tick sync that writes only when it has something to say is a LATCH, not a reconcile — write the empty case too. Tell: `if (X) { Widget->SetFoo(...); }` with no else, where X is false for a state the player can see.
+- **…but where the existing grammar is one-shot writes at an edge, a per-tick reconcile writing the empty case EXTINGUISHES them.** Count the writers first. Write the edge instead, and touch only what you lit.
+- **A per-tick state waiting on a callback that no spec can prove fires needs a bounded wait.** Anything answered by the platform layer - an engine capture, a device reply - is invisible to the suite, so the state that waits on it must time out into a degraded-but-complete path. Without one, the platform where it never answers wedges the feature silently and forever, which is exactly the failure that layer's own unspecability hides.
+- **A per-tick predicate derived from the ABSENCE of a window cannot tell "past it" from "it has not arrived yet"** — every input drains a frame at a time, so both read identical for a tick or two and the thing twitches. Read the POSITIVE fact, and where genuine gaps sit between the windows carrying it, hold the answer for the phase, cleared every tick the phase is not that phase — still a derived predicate, and a resuming client reaches it from the live read alone.
+- **A memory that expires with a phase or a turn is one value keyed by the pair it belongs to, read against the LIVE pair** — never a latched flag cleared from a phase-changed handler. There is then no exit path to miss, a session rebuilt from a save cannot come back stale, and a turn whose phase change is never folded cannot leave the thing silently spent.
+- **A purely derived predicate cannot tell "the answer just arrived" from "I already acted on it"**, so a step whose entry is not idempotent (it snaps the cursor) genuinely needs a one-shot flag. Set it inside the entry function, never at its call sites, and clear it where the step is REBUILT rather than on each exit path.
+- **A per-tab cache of a set two tabs SHARE is a second memory of one fact.** The other tab's next write puts back what the first just removed. Read the store on the press - these reads are never per-frame, which is the only thing the cache ever bought.
+- A widget's display cache dies with the widget, so a value written only by one flow is wrong for every player arriving by another door (resume, reconnect). Derive per tick from the authoritative state rather than adding a "refresh on resume".
+- **A widget mirroring a monotonic counter on the authoritative state must arm on an INCREASE, never on inequality.** A rebuild from the authoritative state and takes every such counter back to 0 while the mirror stays high, so "they differ" fires a beat for something nobody did.
+- A derived value with two asynchronous inputs behind ONE change-detector leaves the second permanently stale — one push per input, each gated on its own inputs.
+- Retrofitting per-open inline state into a reusable persistent child drops the reset the inline code did for free. Add it back explicitly, and write the regression as cancel-WITHOUT-releasing then reopen — a test that always releases masks it.
+- **A sameness guard in front of a per-tick apply is usually protecting ONE non-idempotent write** (a hold reset, a close-only restore that also releases input). Find it before deleting the guard; make that write derived or edge-only, and make the rest dedup in the widget that owns them.
+
+## State that goes stale
+
+- When the source is MONOTONIC, derive the predicate every call instead of caching it in a member — that is how you leave the "clear this flag on every exit path" bug class rather than joining it. If the source can flip back, you genuinely need the flag and you owe every abandon/exit path a reset.
+- **A one-shot that shadows another record's lifetime is cleared INSIDE that record's own clear**, not beside each caller — otherwise a resync (which forgets the record without the window ending) leaves the marker standing and the one-shot refuses to fire for a question the player must answer again. Mark it only once the act actually happened, too: recording a tick that moved nothing leaves the beat believing it opened.
+- A deferred action must be consumed UNCONDITIONALLY at the top of the next tick. Re-validating its trigger at payoff time loses it, because what made you defer is often what changes the condition.
+- A broad "put the player somewhere sensible" write landing after a narrow edge-gated one overrides it forever — make the broad write yield to the specific claim.
+- When you delete the feature a guard was protecting, delete the guard; do not re-aim it. Ask what it now claims, and whether an unrelated subsystem should be able to make that claim false forever.

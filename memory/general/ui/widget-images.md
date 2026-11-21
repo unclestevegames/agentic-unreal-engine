@@ -1,0 +1,20 @@
+# Drawing a texture, painting or rich text in a widget
+
+## Brushes and textures
+
+- **`UImage::SetBrush` does NOT make a texture resident; `SetBrushFromTexture` does** — that setter also flips `bForceMiplevelsToBeResident`/`bIgnoreStreamingMipBias`, and a brush built by hand (the only way to carry a `UVRegion`) skips it. A UI texture nothing else draws then sits at its smallest always-resident mip (64px on a 1024 source), which reads as a grainy image, not a missing one.
+- **…but those flags only queue it — the streamer still climbs one mip at a time** (~10s to full on a 1024 painting). A texture the player looks straight at wants `NeverStream` on the asset.
+- **A Slate texture brush has NO say in which mip it draws from** — Slate gives it a static sampler and lets the hardware pick from the UV derivatives, so a UI image drawn between 1x and 2x minification silently comes from the half-size mip and reads soft. Only a material brush can bias that (`TextureSample` `MipValueMode = MipBias`, pin named `Bias`); `FSlateBrush` exposes nothing.
+- **A `RoundedBox` brush carries a texture AND its `UVRegion`** - the corner mask is computed from `LocalPosition / LocalSize`, independent of the texture coordinates, so one plain `FSlateBrush` crops a painting to a window and rounds its corners with no material and no new asset. `OutlineSettings.Color` defaults to Transparent, so a zero-width outline leaves no fringe.
+- **A material brush ignores the brush's `UVRegion`** — its texture coordinates come from the material, so pass the window in as a parameter instead.
+- **UE rich text closes with a bare `</>`**, never `</StyleName>` — a named close makes the whole run print literally, tags and all. Named styles come from a `UDataTable` of `FRichTextStyleRow`, which can be built in C++ (`NewObject` + `AddRow`) rather than authored as an asset.
+
+## Inline images in text
+
+- An image inline with wrapping text is a `URichTextBlock` + a `URichTextBlockImageDecorator` subclass overriding only `FindImageBrush` to answer from a C++ `TMap<FName, FSlateBrush>` — no `UDataTable`, no custom `ITextDecorator`, no custom `SWidget`. Stock `<img id=".."/>`, stock baseline alignment.
+- Set each brush's `ImageSize` from its texture: the engine clamps an inline image to the brush size, so a default-sized brush silently shrinks every icon below the height the markup asked for.
+- Rich text takes its look as one `FTextBlockStyle` via `SetDefaultTextStyle`, not the `SetFont`/`SetColorAndOpacity` pair — and its `GetText()` returns the raw markup, since tags only resolve during a paint pass no headless spec runs. Test the markup builder as a pure function.
+- **A `TMap` of brushes handed to Slate must be filled at construction and never grow.** `FindImageBrush`'s answer is stored as a raw `const FSlateBrush*` by `SImage`, and a `TMap` moves its values when it grows - so a second glyph in one paragraph dangles the first. Fill every id in the constructor and only ever rewrite an entry in place; `FindOrAdd` in the lookup is the defect.
+- **An inline `<img>` in rich text draws at min(brush ImageSize, the surrounding line height)**, so its size answers to whatever text it sits in unless the brush is told otherwise. Two symbol runs sized off different things (a measured bar vs a font size) silently differ by a tenth or more; give the decorator a settable height and push it from wherever the other one is measured, or they drift.
+- **An inline `<img>` in rich text ignores the text style's colour and alpha**, so fading a line by its default style fades the words and leaves the image opaque. Fade the whole line by render opacity; a scroll list with `EnableEdgeFade` is the one writer of its items' opacity, so pass an item's own opacity in through the list rather than setting it.
+- **A brush's `Tiling` repeats at the texture's resident pixel width, ignoring `ImageSize`** (`FSlateElementBatcher`: `LocalSize.X / ActualSize.X`), so a capped or power-of-two texture tiles at the wrong period. Repeat art at a chosen size by painting one box per copy.
